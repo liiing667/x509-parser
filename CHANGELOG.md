@@ -5,6 +5,19 @@
 ### Added/Changed/Fixed
 
 - Add new feature `verify-aws-fips` to use the FIPS-approved crypto module of `aws-lc-rs` (#233)
+- Add `budget::ParseBudget`, a unified resource budget (input size, line length, PEM body size
+  and number of PEM blocks) applied to the offline PEM/DER/CSR/CRL parsing chain
+  - All parsing entry points now enforce the default budget; `*_with_budget` variants and
+    `ParseBudget::unlimited()` allow overriding it
+    (`Pem::read_with_budget`, `Pem::iter_from_buffer_with_budget`,
+    `Pem::iter_from_reader_with_budget`, `parse_x509_pem_with_budget`,
+    `parse_x509_certificate_with_budget`, `parse_x509_csr_with_budget`,
+    `parse_x509_crl_with_budget` and the matching inherent methods)
+  - Over-limit inputs return the stable `BudgetExceeded` error (`PEMError`/`X509Error`)
+- PEM parser now enforces strict framing: malformed BEGIN/END lines return `InvalidHeader` or
+  the new `InvalidEndTag`, and a dangling block (missing or incomplete END tag at EOF) keeps
+  returning `IncompletePEM`; PEM lines are read with bounded buffers so untrusted data cannot
+  trigger unbounded allocation
 
 ### Thanks
 
@@ -421,5 +434,4 @@ Public Keys:
   **Warning: this is a breaking change**
 - Add support for PEM-encoded certificates
 - Add some documentation
-
 

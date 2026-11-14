@@ -1,5 +1,6 @@
 //! A "prelude" for users of the x509-parser crate.
 
+pub use crate::budget::*;
 pub use crate::certificate::*;
 pub use crate::certification_request::*;
 pub use crate::cri_attributes::*;

@@ -154,7 +154,7 @@ impl<'a> DerParser<'a> for X509Certificate<'a> {
     type Error = X509Error;
 
     fn parse_der(input: Input<'a>) -> IResult<Input<'a>, Self, Self::Error> {
-        X509CertificateParser::new().parse(input)
+        Self::parse_der_with_budget(input, &crate::budget::ParseBudget::default())
     }
 
     fn from_der_content(
@@ -178,6 +178,39 @@ impl<'a> DerParser<'a> for X509Certificate<'a> {
             raw,
         };
         Ok((rem, cert))
+    }
+}
+
+impl<'a> X509Certificate<'a> {
+    /// Parse a DER-encoded X.509 certificate with an explicit resource budget.
+    ///
+    /// Inputs larger than [`ParseBudget::max_input_bytes`](crate::budget::ParseBudget) are
+    /// rejected with [`X509Error::BudgetExceeded`] without being parsed.
+    pub fn parse_der_with_budget(
+        input: Input<'a>,
+        budget: &crate::budget::ParseBudget,
+    ) -> IResult<Input<'a>, Self, X509Error> {
+        if !budget.allows_input(input.len()) {
+            return Err(Err::Error(X509Error::BudgetExceeded));
+        }
+        X509CertificateParser::new().parse(input)
+    }
+
+    /// Parse a DER-encoded X.509 certificate from bytes with an explicit resource budget.
+    ///
+    /// See [`FromDer::from_der`] and [`X509Certificate::parse_der_with_budget`].
+    pub fn from_der_with_budget(
+        i: &'a [u8],
+        budget: &crate::budget::ParseBudget,
+    ) -> X509Result<'a, Self> {
+        if !budget.allows_input(i.len()) {
+            return Err(Err::Error(X509Error::BudgetExceeded));
+        }
+        let input = Input::from(i);
+        match X509CertificateParser::new().parse(input) {
+            Ok((rem, res)) => Ok((rem.as_bytes2(), res)),
+            Err(e) => Err(e),
+        }
     }
 }
 

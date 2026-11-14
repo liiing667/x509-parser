@@ -70,6 +70,10 @@ pub enum X509Error {
     DerParser(#[from] InnerError),
     #[error("nom error: {0:?}")]
     NomError(ErrorKind),
+
+    /// Input exceeded the configured [`ParseBudget`](crate::budget::ParseBudget).
+    #[error("resource budget exceeded")]
+    BudgetExceeded,
 }
 
 impl From<nom::Err<Error>> for X509Error {
@@ -123,8 +127,12 @@ pub enum PEMError {
     IncompletePEM,
     #[error("invalid header")]
     InvalidHeader,
+    #[error("invalid PEM end tag")]
+    InvalidEndTag,
     #[error("missing header")]
     MissingHeader,
+    #[error("resource budget exceeded")]
+    BudgetExceeded,
 
     #[error("IO error: {0}")]
     IOError(#[from] std::io::Error),

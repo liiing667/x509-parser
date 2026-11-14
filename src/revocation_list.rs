@@ -183,14 +183,7 @@ impl<'a> DerParser<'a> for CertificateRevocationList<'a> {
     type Error = X509Error;
 
     fn parse_der(input: Input<'a>) -> IResult<Input<'a>, Self, Self::Error> {
-        let orig_input = input.clone();
-        let (rem, (header, content)) = Sequence::parse_der_as_input(input).map_err(Err::convert)?;
-        let (_, mut cert_list) = Self::from_der_content(&header, content)?;
-        // safe because this is parsed from same input and orig_input.len() > rem.len()
-        let total_len = orig_input.len() - rem.len();
-        // limit to real number of bytes, orig_input can contain more
-        cert_list.raw = orig_input.take(total_len);
-        Ok((rem, cert_list))
+        Self::parse_der_with_budget(input, &crate::budget::ParseBudget::default())
     }
 
     fn from_der_content(
@@ -214,6 +207,47 @@ impl<'a> DerParser<'a> for CertificateRevocationList<'a> {
             raw,
         };
         Ok((rem, cert))
+    }
+}
+
+impl<'a> CertificateRevocationList<'a> {
+    /// Parse a DER-encoded certificate revocation list with an explicit resource budget.
+    ///
+    /// Inputs larger than [`ParseBudget::max_input_bytes`](crate::budget::ParseBudget) are
+    /// rejected with [`X509Error::BudgetExceeded`] without being parsed.
+    pub fn parse_der_with_budget(
+        input: Input<'a>,
+        budget: &crate::budget::ParseBudget,
+    ) -> IResult<Input<'a>, Self, X509Error> {
+        if !budget.allows_input(input.len()) {
+            return Err(Err::Error(X509Error::BudgetExceeded));
+        }
+        let orig_input = input.clone();
+        let (rem, (header, content)) = Sequence::parse_der_as_input(input).map_err(Err::convert)?;
+        let (_, mut cert_list) = Self::from_der_content(&header, content)?;
+        // safe because this is parsed from same input and orig_input.len() > rem.len()
+        let total_len = orig_input.len() - rem.len();
+        // limit to real number of bytes, orig_input can contain more
+        cert_list.raw = orig_input.take(total_len);
+        Ok((rem, cert_list))
+    }
+
+    /// Parse a DER-encoded certificate revocation list from bytes with an explicit resource
+    /// budget.
+    ///
+    /// See [`FromDer::from_der`] and [`CertificateRevocationList::parse_der_with_budget`].
+    pub fn from_der_with_budget(
+        i: &'a [u8],
+        budget: &crate::budget::ParseBudget,
+    ) -> X509Result<'a, Self> {
+        if !budget.allows_input(i.len()) {
+            return Err(Err::Error(X509Error::BudgetExceeded));
+        }
+        let input = Input::from(i);
+        match Self::parse_der_with_budget(input, budget) {
+            Ok((rem, res)) => Ok((rem.as_bytes2(), res)),
+            Err(e) => Err(e),
+        }
     }
 }
 

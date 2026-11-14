@@ -150,6 +150,7 @@
 ))]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+pub mod budget;
 pub mod certificate;
 pub mod certification_request;
 pub mod cri_attributes;
@@ -191,7 +192,9 @@ pub use nom;
 pub use oid_registry;
 
 use asn1_rs::FromDer;
+use budget::ParseBudget;
 use certificate::X509Certificate;
+use certification_request::X509CertificationRequest;
 use error::X509Result;
 use revocation_list::CertificateRevocationList;
 
@@ -208,6 +211,41 @@ pub fn parse_x509_certificate(i: &[u8]) -> X509Result<'_, X509Certificate<'_>> {
     X509Certificate::from_der(i)
 }
 
+/// Parse a **DER-encoded** X.509 Certificate with an explicit resource [`ParseBudget`]
+///
+/// Inputs exceeding `budget` are rejected with
+/// [`X509Error::BudgetExceeded`](error::X509Error::BudgetExceeded) before any parsing.
+/// See [`parse_x509_certificate`] for the general behavior.
+#[inline]
+pub fn parse_x509_certificate_with_budget<'a>(
+    i: &'a [u8],
+    budget: &ParseBudget,
+) -> X509Result<'a, X509Certificate<'a>> {
+    X509Certificate::from_der_with_budget(i, budget)
+}
+
+/// Parse a **DER-encoded** X.509 Certification Signing Request (CSR)
+///
+/// This is a convenience function over
+/// [`X509CertificationRequest::from_der`](certification_request::X509CertificationRequest::from_der).
+#[inline]
+pub fn parse_x509_csr(i: &[u8]) -> X509Result<'_, X509CertificationRequest<'_>> {
+    X509CertificationRequest::from_der(i)
+}
+
+/// Parse a **DER-encoded** X.509 CSR with an explicit resource [`ParseBudget`]
+///
+/// Inputs exceeding `budget` are rejected with
+/// [`X509Error::BudgetExceeded`](error::X509Error::BudgetExceeded) before any parsing.
+/// See [`parse_x509_csr`] for the general behavior.
+#[inline]
+pub fn parse_x509_csr_with_budget<'a>(
+    i: &'a [u8],
+    budget: &ParseBudget,
+) -> X509Result<'a, X509CertificationRequest<'a>> {
+    X509CertificationRequest::from_der_with_budget(i, budget)
+}
+
 /// Parse a DER-encoded X.509 v2 CRL, and return the remaining of the input and the built
 /// object.
 ///
@@ -216,6 +254,19 @@ pub fn parse_x509_certificate(i: &[u8]) -> X509Result<'_, X509Certificate<'_>> {
 #[inline]
 pub fn parse_x509_crl(i: &[u8]) -> X509Result<'_, CertificateRevocationList<'_>> {
     CertificateRevocationList::from_der(i)
+}
+
+/// Parse a DER-encoded X.509 v2 CRL with an explicit resource [`ParseBudget`]
+///
+/// Inputs exceeding `budget` are rejected with
+/// [`X509Error::BudgetExceeded`](error::X509Error::BudgetExceeded) before any parsing.
+/// See [`parse_x509_crl`] for the general behavior.
+#[inline]
+pub fn parse_x509_crl_with_budget<'a>(
+    i: &'a [u8],
+    budget: &ParseBudget,
+) -> X509Result<'a, CertificateRevocationList<'a>> {
+    CertificateRevocationList::from_der_with_budget(i, budget)
 }
 
 /// Parse a DER-encoded X.509 Certificate, and return the remaining of the input and the built
