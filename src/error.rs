@@ -39,6 +39,8 @@ pub enum X509Error {
     InvalidExtensions,
     #[error("invalid attributes")]
     InvalidAttributes,
+    #[error("invalid GeneralName for canonical identity")]
+    InvalidGeneralName,
     #[error("duplicate extensions")]
     DuplicateExtensions,
     #[error("duplicate attributes")]
