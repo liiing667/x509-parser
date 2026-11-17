@@ -47,7 +47,7 @@ pub use inhibitant_policy::{InhibitAnyPolicy, SkipCerts};
 pub use issuer_alt_name::IssuerAlternativeName;
 pub use issuing_distribution_point::IssuingDistributionPoint;
 pub use key_usage::*;
-pub use name_constraints::{GeneralSubtree, NameConstraints};
+pub use name_constraints::{GeneralSubtree, NameConstraintError, NameConstraints};
 pub use ns_cert_type::NSCertType;
 pub use ns_comment::parse_der_nscomment;
 pub use policy_constraints::PolicyConstraints;

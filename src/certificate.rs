@@ -599,6 +599,32 @@ impl<'a> TbsCertificate<'a> {
             })
     }
 
+    /// Verify that this certificate's Subject Alternative Names satisfy the
+    /// name constraints of `issuer` (RFC 5280 section 4.2.1.10).
+    ///
+    /// Returns `Ok(())` if the issuer has no Name Constraints extension, if
+    /// this certificate has no Subject Alternative Name extension, or if all
+    /// names are permitted.
+    ///
+    /// The check is conservative: constraints that cannot be evaluated
+    /// safely (non-default `minimum`/`maximum` base distances, invalid IP
+    /// lengths, constrained but unsupported name forms) result in an error
+    /// instead of being ignored. See [`NameConstraintError`].
+    pub fn verify_name_constraints(
+        &self,
+        issuer: &TbsCertificate<'_>,
+    ) -> Result<(), NameConstraintError> {
+        let Some(constraints) = issuer.name_constraints()? else {
+            return Ok(());
+        };
+        let Some(san) = self.subject_alternative_name()? else {
+            return Ok(());
+        };
+        constraints
+            .value
+            .check_general_names(san.value.general_names())
+    }
+
     /// Returns true if certificate has `basicConstraints CA:true`
     ///
     /// This is a convenience wrapper around [`try_is_ca`](Self::try_is_ca)
