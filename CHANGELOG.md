@@ -5,6 +5,15 @@
 ### Added/Changed/Fixed
 
 - Add new feature `verify-aws-fips` to use the FIPS-approved crypto module of `aws-lc-rs` (#233)
+- CRL: parse the delta CRL indicator (RFC 5280 5.3.4) and certificate issuer (5.3.5) extensions,
+  and add accessors `CertificateRevocationList::issuing_distribution_point`,
+  `delta_crl_indicator`/`is_delta_crl` and `RevokedCertificate::certificate_issuer`
+- Add the `revocation` module with composable revocation coverage determination:
+  `CrlScope`, `CrlCoverage`/`CrlStatus` and `RevocationCheck`/`RevocationStatus` classify fixed
+  certificate/CRL pairs as covered, not covered or conflict, taking into account the issuing
+  distribution point scope (certificate kind, reason partition, distribution point names),
+  freshness, delta/base CRL linkage, unknown critical extensions, indirect CRL issuer names,
+  `removeFromCRL` and duplicate or inconsistent serial numbers
 
 ### Thanks
 
@@ -421,5 +430,4 @@ Public Keys:
   **Warning: this is a breaking change**
 - Add support for PEM-encoded certificates
 - Add some documentation
-
 

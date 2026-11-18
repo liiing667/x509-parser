@@ -38,11 +38,27 @@ fn print_x509_extension(oid: &Oid, ext: &X509Extension, level: usize) {
         ParsedExtension::CRLNumber(num) => {
             println!("{:indent$}X509v3 CRL Number: {}", "", num, indent = level);
         }
+        ParsedExtension::DeltaCRLIndicator(num) => {
+            println!(
+                "{:indent$}X509v3 Delta CRL Indicator (base CRL number): {}",
+                "",
+                num,
+                indent = level
+            );
+        }
         ParsedExtension::ReasonCode(code) => {
             println!(
                 "{:indent$}X509v3 CRL Reason Code: {}",
                 "",
                 code,
+                indent = level
+            );
+        }
+        ParsedExtension::CertificateIssuer(names) => {
+            println!(
+                "{:indent$}Certificate Issuer: {:?}",
+                "",
+                names,
                 indent = level
             );
         }

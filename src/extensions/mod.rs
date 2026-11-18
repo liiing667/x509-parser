@@ -314,10 +314,14 @@ pub enum ParsedExtension<'a> {
     IssuingDistributionPoint(IssuingDistributionPoint<'a>),
     /// Section 5.3.1 of rfc 5280
     CRLNumber(BigUint),
+    /// Section 5.3.4 of rfc 5280 (delta CRL indicator extension, value is the base CRL number)
+    DeltaCRLIndicator(BigUint),
     /// Section 5.3.1 of rfc 5280
     ReasonCode(ReasonCode),
     /// Section 5.3.3 of rfc 5280
     InvalidityDate(ASN1Time),
+    /// Section 5.3.5 of rfc 5280 (CRL entry extension identifying the certificate issuer)
+    CertificateIssuer(Vec<GeneralName<'a>>),
     /// rfc 6962
     SCT(Vec<SignedCertificateTimestamp<'a>>),
     /// Unparsed extension (was not requested in parsing options)
@@ -418,8 +422,14 @@ pub(crate) mod parser {
         add!(m, OID_X509_EXT_CERT_TYPE, parse_nscerttype_ext);
         add!(m, OID_X509_EXT_CERT_COMMENT, parse_nscomment_ext);
         add!(m, OID_X509_EXT_CRL_NUMBER, parse_crl_number);
+        add!(
+            m,
+            OID_X509_EXT_DELTA_CRL_INDICATOR,
+            parse_delta_crl_indicator
+        );
         add!(m, OID_X509_EXT_REASON_CODE, parse_reason_code);
         add!(m, OID_X509_EXT_INVALIDITY_DATE, parse_invalidity_date);
+        add!(m, OID_X509_EXT_ISSUER, parse_certificate_issuer);
         add!(
             m,
             OID_X509_EXT_ISSUER_DISTRIBUTION_POINT,
@@ -603,6 +613,23 @@ pub(crate) mod parser {
         let (rem, obj) = Integer::parse_der(input).map_err(Err::convert)?;
         let uint = obj.as_biguint().map_err(|e| Err::Error(e.into()))?;
         Ok((rem, ParsedExtension::CRLNumber(uint)))
+    }
+
+    // deltaCRLIndicator ::= BaseCRLNumber
+    // BaseCRLNumber ::= CRLNumber
+    fn parse_delta_crl_indicator(input: Input) -> IResult<Input, ParsedExtension, X509Error> {
+        let (rem, obj) = Integer::parse_der(input).map_err(Err::convert)?;
+        let uint = obj.as_biguint().map_err(|e| Err::Error(e.into()))?;
+        Ok((rem, ParsedExtension::DeltaCRLIndicator(uint)))
+    }
+
+    // certificateIssuer ::= GeneralNames
+    fn parse_certificate_issuer(input: Input) -> IResult<Input, ParsedExtension, X509Error> {
+        map(
+            <Vec<GeneralName>>::parse_der,
+            ParsedExtension::CertificateIssuer,
+        )
+        .parse(input)
     }
 
     fn parse_sct_ext(input: Input) -> IResult<Input, ParsedExtension, X509Error> {
