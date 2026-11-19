@@ -10,11 +10,17 @@ macro_rules! test_critical {
     (MUST $ext:ident, $l:ident, $name:expr) => {
         if !$ext.critical {
             $l.err(&format!("Extension {} MUST be critical, but is not", $name));
+            false
+        } else {
+            true
         }
     };
     (MUST NOT $ext:ident, $l:ident, $name:expr) => {
         if $ext.critical {
             $l.err(&format!("Extension {} MUST NOT be critical, but is", $name));
+            false
+        } else {
+            true
         }
     };
     (SHOULD $ext:ident, $l:ident, $name:expr) => {
@@ -63,7 +69,7 @@ impl<'a> Validator<'a> for X509ExtensionsValidator {
             match ext.parsed_extension() {
                 ParsedExtension::AuthorityKeyIdentifier(aki) => {
                     // Conforming CAs MUST mark this extension as non-critical
-                    test_critical!(MUST NOT ext, l, "AKI");
+                    res &= test_critical!(MUST NOT ext, l, "AKI");
                     // issuer or serial is present must be either both present or both absent
                     if aki.authority_cert_issuer.is_some() ^ aki.authority_cert_serial.is_some() {
                         l.warn("AKI: only one of Issuer and Serial is present");
@@ -92,6 +98,7 @@ impl<'a> Validator<'a> for X509ExtensionsValidator {
                     // MUST be set to 1.
                     if ku.flags == 0 {
                         l.err("KeyUsage: all flags are set to 0");
+                        res = false;
                     }
                 }
                 ParsedExtension::SubjectAlternativeName(san) => {

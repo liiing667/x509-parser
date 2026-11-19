@@ -1,3 +1,4 @@
+use super::X509ExtensionsValidator;
 use super::{Logger, Validator, X509NameStructureValidator};
 use crate::certificate::*;
 use crate::extensions::{GeneralName, ParsedExtension};
@@ -160,6 +161,10 @@ impl<'a> Validator<'a> for TbsCertificateStructureValidator {
                 }
             }
         }
+        // extension-level semantic checks (duplicate extensions, criticality,
+        // KeyUsage content, certificate policies, ...). Every hard error raised
+        // by this validator must contribute to the final result (fail-closed).
+        res &= X509ExtensionsValidator.validate(&item.extensions(), l);
         res
     }
 }
@@ -270,6 +275,146 @@ mod tests {
                 .iter()
                 .any(|e| e.contains("Unsupported critical extension")),
             "known good cert should not have unsupported critical extension errors"
+        );
+    }
+
+    #[test]
+    fn validate_keyusage_with_no_flag_fails_closed() {
+        let der = include_bytes!("../../assets/keyusage_zero.der");
+        let (_, cert) = X509Certificate::from_der(der).expect("could not parse certificate");
+        let mut logger = VecLogger::default();
+        let res = X509StructureValidator.validate(&cert, &mut logger);
+
+        assert!(!res, "KeyUsage with all bits set to 0 must fail validation");
+        assert!(
+            logger
+                .errors()
+                .iter()
+                .any(|e| e.contains("KeyUsage: all flags are set to 0")),
+            "expected KeyUsage hard error, got: {:?}",
+            logger.errors()
+        );
+    }
+
+    #[test]
+    fn validate_duplicate_certificate_policy_fails_closed() {
+        let der = include_bytes!("../../assets/duplicate_policy.der");
+        let (_, cert) = X509Certificate::from_der(der).expect("could not parse certificate");
+        let mut logger = VecLogger::default();
+        let res = X509StructureValidator.validate(&cert, &mut logger);
+
+        assert!(!res, "duplicate certificate policy must fail validation");
+        assert!(
+            logger
+                .errors()
+                .iter()
+                .any(|e| e.contains("Certificate Policies: duplicate policy")),
+            "expected duplicate policy hard error, got: {:?}",
+            logger.errors()
+        );
+    }
+
+    #[test]
+    fn validate_critical_aki_fails_closed() {
+        let der = include_bytes!("../../assets/aki_critical.der");
+        let (_, cert) = X509Certificate::from_der(der).expect("could not parse certificate");
+        let mut logger = VecLogger::default();
+        let res = X509StructureValidator.validate(&cert, &mut logger);
+
+        // AKI MUST NOT be critical (RFC 5280 4.2.1.1): this is a hard error.
+        assert!(!res, "a critical AKI extension must fail validation");
+        assert!(
+            logger
+                .errors()
+                .iter()
+                .any(|e| e.contains("AKI MUST NOT be critical")),
+            "expected AKI criticality hard error, got: {:?}",
+            logger.errors()
+        );
+    }
+
+    #[test]
+    fn validate_duplicate_extension_fails_closed() {
+        let der = include_bytes!("../../assets/duplicate_extension.der");
+        let (_, cert) = X509Certificate::from_der(der).expect("could not parse certificate");
+        let mut logger = VecLogger::default();
+        let res = X509StructureValidator.validate(&cert, &mut logger);
+
+        assert!(!res, "duplicate extensions must fail validation");
+        assert!(
+            logger
+                .errors()
+                .iter()
+                .any(|e| e.contains("Duplicate extension")),
+            "expected duplicate extension hard error, got: {:?}",
+            logger.errors()
+        );
+    }
+
+    #[test]
+    fn validate_unparseable_extension_fails_closed() {
+        let der = include_bytes!("../../assets/malformed_extension.der");
+        let (_, cert) = X509Certificate::from_der(der).expect("certificate envelope is still DER");
+        let mut logger = VecLogger::default();
+        let res = X509StructureValidator.validate(&cert, &mut logger);
+
+        assert!(
+            !res,
+            "an extension that failed to parse must fail validation"
+        );
+        assert!(
+            logger
+                .errors()
+                .iter()
+                .any(|e| e.starts_with("Parse error in extension")),
+            "expected extension parse hard error, got: {:?}",
+            logger.errors()
+        );
+    }
+
+    #[test]
+    fn validate_chained_validators_have_stable_diagnostics() {
+        let der = include_bytes!("../../assets/keyusage_zero.der");
+        let (_, cert) = X509Certificate::from_der(der).expect("could not parse certificate");
+
+        let mut chained = VecLogger::default();
+        let chained_ok = X509StructureValidator
+            .chain(X509CertificateValidator)
+            .validate(&cert, &mut chained);
+
+        let mut standalone = VecLogger::default();
+        let standalone_ok = X509StructureValidator.validate(&cert, &mut standalone);
+
+        // hard errors fail closed in both configurations
+        assert!(!chained_ok);
+        assert!(!standalone_ok);
+        // overlapping validators must not produce duplicated evidence
+        assert_eq!(chained.errors(), standalone.errors());
+        assert_eq!(
+            chained.errors(),
+            &["KeyUsage: all flags are set to 0".to_string()]
+        );
+    }
+
+    #[test]
+    fn validate_warnings_do_not_block_and_remain_stable() {
+        let der = include_bytes!("../../assets/unsupported_noncritical_ext.der");
+        let (_, cert) = X509Certificate::from_der(der).expect("could not parse certificate");
+
+        let mut logger = VecLogger::default();
+        let res = X509StructureValidator
+            .chain(X509CertificateValidator)
+            .validate(&cert, &mut logger);
+
+        // warnings must not make validation fail
+        assert!(
+            res,
+            "non-critical unsupported extension must not fail validation"
+        );
+        assert!(logger.errors().is_empty());
+        assert_eq!(
+            logger.warnings(),
+            &["Unsupported extension 1.2.3.4.5.6.7.8.9".to_string()]
         );
     }
 }

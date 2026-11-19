@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 pub trait Logger {
     fn warn(&mut self, message: &str);
 
@@ -5,10 +7,19 @@ pub trait Logger {
 }
 
 /// Simple Logger for [`Validator`](crate::validate::Validator) trait, storing messages in `Vec`
+///
+/// Identical diagnostics are stored only once: this keeps the collected
+/// evidence stable when several validators overlap (for ex. when chaining
+/// [`X509StructureValidator`](crate::validate::X509StructureValidator) with
+/// [`X509CertificateValidator`](crate::validate::X509CertificateValidator)).
+/// Warnings and errors are tracked independently, so de-duplication never
+/// promotes a warning to an error or vice-versa.
 #[derive(Debug, Default)]
 pub struct VecLogger {
     warnings: Vec<String>,
+    seen_warnings: HashSet<String>,
     errors: Vec<String>,
+    seen_errors: HashSet<String>,
 }
 
 impl VecLogger {
@@ -25,11 +36,15 @@ impl VecLogger {
 
 impl Logger for VecLogger {
     fn warn(&mut self, message: &str) {
-        self.warnings.push(message.to_owned())
+        if self.seen_warnings.insert(message.to_owned()) {
+            self.warnings.push(message.to_owned());
+        }
     }
 
     fn err(&mut self, message: &str) {
-        self.errors.push(message.to_owned())
+        if self.seen_errors.insert(message.to_owned()) {
+            self.errors.push(message.to_owned());
+        }
     }
 }
 

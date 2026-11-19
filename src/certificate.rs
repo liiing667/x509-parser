@@ -268,6 +268,7 @@ impl<'a> FromDer<'a, X509Error> for X509Certificate<'a> {
 #[derive(Clone, Copy, Debug)]
 pub struct X509CertificateParser {
     deep_parse_extensions: bool,
+    check_extensions: bool,
     // strict: bool,
 }
 
@@ -276,6 +277,7 @@ impl X509CertificateParser {
     pub const fn new() -> Self {
         X509CertificateParser {
             deep_parse_extensions: true,
+            check_extensions: false,
         }
     }
 
@@ -283,6 +285,32 @@ impl X509CertificateParser {
     pub const fn with_deep_parse_extensions(self, deep_parse_extensions: bool) -> Self {
         X509CertificateParser {
             deep_parse_extensions,
+            check_extensions: self.check_extensions,
+        }
+    }
+
+    /// Enable strict extension checks while parsing.
+    ///
+    /// When enabled, parsing fails (instead of returning a certificate) if a
+    /// hard extension error is encountered, in particular:
+    /// - an unsupported (unrecognized) extension marked as critical, which
+    ///   MUST cause the certificate to be rejected (RFC 5280 section 4.2);
+    /// - an extension whose content could not be parsed.
+    ///
+    /// This provides fail-closed behavior directly at the parsing entry point.
+    /// The default behavior is unchanged for backward compatibility: the
+    /// certificate is still parsed, and the same conditions are reported as
+    /// hard errors by the validators in the [`validate`](crate::validate)
+    /// module.
+    ///
+    /// Extension content must be parsed for this check to be effective, so it
+    /// is a no-op when combined with
+    /// [`with_deep_parse_extensions(false)`](Self::with_deep_parse_extensions).
+    #[inline]
+    pub const fn with_check_extensions(self, check_extensions: bool) -> Self {
+        X509CertificateParser {
+            deep_parse_extensions: self.deep_parse_extensions,
+            check_extensions,
         }
     }
 }
@@ -301,8 +329,9 @@ impl<'a> Parser<Input<'a>> for X509CertificateParser {
         let orig_input = input.clone();
         let (rem, mut cert) = Sequence::parse_der_and_then(input, |_, i| {
             // pass options to TbsCertificate parser
-            let mut tbs_parser =
-                TbsCertificateParser::new().with_deep_parse_extensions(self.deep_parse_extensions);
+            let mut tbs_parser = TbsCertificateParser::new()
+                .with_deep_parse_extensions(self.deep_parse_extensions)
+                .with_check_extensions(self.check_extensions);
             let (i, tbs_certificate) = tbs_parser.parse(i)?;
             let (i, signature_algorithm) = AlgorithmIdentifier::parse_der(i)?;
             let (i, signature_value) = parse_signature_value(i)?;
@@ -645,6 +674,29 @@ fn get_extension_unique<'a, 'b>(
     Ok(res)
 }
 
+/// Fail-closed check of extension-level hard errors at parse time.
+///
+/// RFC 5280 section 4.2 mandates rejecting a certificate containing a critical
+/// extension that is not recognized. Extensions whose content could not be
+/// parsed are also treated as hard errors. Non-critical unsupported
+/// extensions are intentionally ignored here.
+pub(crate) fn check_extensions_hard_errors(
+    extensions: &[X509Extension<'_>],
+) -> Result<(), X509Error> {
+    for ext in extensions {
+        match ext.parsed_extension() {
+            ParsedExtension::UnsupportedExtension { .. } if ext.critical => {
+                return Err(X509Error::InvalidExtensions);
+            }
+            ParsedExtension::ParseError { .. } => {
+                return Err(X509Error::InvalidExtensions);
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
 impl AsRef<[u8]> for TbsCertificate<'_> {
     #[inline]
     fn as_ref(&self) -> &[u8] {
@@ -726,6 +778,7 @@ impl<'a> DerParser<'a> for TbsCertificate<'a> {
 #[derive(Clone, Copy, Debug)]
 pub struct TbsCertificateParser {
     deep_parse_extensions: bool,
+    check_extensions: bool,
 }
 
 impl TbsCertificateParser {
@@ -733,6 +786,7 @@ impl TbsCertificateParser {
     pub const fn new() -> Self {
         TbsCertificateParser {
             deep_parse_extensions: true,
+            check_extensions: false,
         }
     }
 
@@ -740,6 +794,28 @@ impl TbsCertificateParser {
     pub const fn with_deep_parse_extensions(self, deep_parse_extensions: bool) -> Self {
         TbsCertificateParser {
             deep_parse_extensions,
+            check_extensions: self.check_extensions,
+        }
+    }
+
+    /// Enable strict extension checks while parsing.
+    ///
+    /// When enabled, an unsupported extension marked as critical (RFC 5280
+    /// section 4.2 requires rejecting such certificates) or an extension whose
+    /// content could not be parsed causes parsing to fail.
+    ///
+    /// The default is `false` for backward compatibility: parsing succeeds and
+    /// the conditions are reported by the validators in the
+    /// [`validate`](crate::validate) module.
+    ///
+    /// Extension content must be parsed for this check to be effective, so it
+    /// is a no-op when combined with
+    /// [`with_deep_parse_extensions(false)`](Self::with_deep_parse_extensions).
+    #[inline]
+    pub const fn with_check_extensions(self, check_extensions: bool) -> Self {
+        TbsCertificateParser {
+            deep_parse_extensions: self.deep_parse_extensions,
+            check_extensions,
         }
     }
 }
@@ -771,6 +847,9 @@ impl<'a> Parser<Input<'a>> for TbsCertificateParser {
             } else {
                 parse_opt_tagged_extensions_envelope_only::<3>(rem)?
             };
+            if self.check_extensions {
+                check_extensions_hard_errors(&extensions)?;
+            }
             // do no set `raw` here, it will be updated just after closure return;
             let raw = Input::default();
             let tbs = TbsCertificate {

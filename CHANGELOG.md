@@ -5,6 +5,20 @@
 ### Added/Changed/Fixed
 
 - Add new feature `verify-aws-fips` to use the FIPS-approved crypto module of `aws-lc-rs` (#233)
+- Validate: all hard extension errors now fail closed (the validator result is
+  `false`), while warnings never block validation and diagnostics stay stable
+  - `KeyUsage` with no bit set and extensions with an invalid criticality (for
+    ex. a critical `AuthorityKeyIdentifier`) now make validation fail
+  - `X509StructureValidator` now runs the extension semantic checks, so a
+    single entry point covers unsupported critical extensions, duplicate
+    extensions, duplicate certificate policies and invalid `KeyUsage`
+  - `VecLogger` de-duplicates identical warnings and errors, so chaining
+    validators no longer produces duplicated evidence
+- Parsing: add `X509CertificateParser::with_check_extensions` and
+  `TbsCertificateParser::with_check_extensions` to reject certificates with an
+  unsupported critical extension or an unparseable extension directly at the
+  parsing entry point (RFC 5280 section 4.2). Default parsing stays lenient for
+  backward compatibility.
 
 ### Thanks
 
@@ -421,5 +435,4 @@ Public Keys:
   **Warning: this is a breaking change**
 - Add support for PEM-encoded certificates
 - Add some documentation
-
 
