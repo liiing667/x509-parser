@@ -120,6 +120,41 @@ impl<'a> CertificateRevocationList<'a> {
             })
     }
 
+    /// Get the issuing distribution point (IDP), if present
+    ///
+    /// The IDP extension (RFC 5280 section 5.2.5) narrows the scope of a CRL to a specific
+    /// distribution point and/or a subset of certificates or revocation reasons.
+    pub fn issuing_distribution_point(&self) -> Option<&IssuingDistributionPoint<'_>> {
+        self.extensions()
+            .iter()
+            .find(|&ext| ext.oid == OID_X509_EXT_ISSUER_DISTRIBUTION_POINT)
+            .and_then(|ext| match ext.parsed_extension {
+                ParsedExtension::IssuingDistributionPoint(ref idp) => Some(idp),
+                _ => None,
+            })
+    }
+
+    /// Get the delta CRL indicator (base CRL number), if present
+    ///
+    /// A CRL containing the delta CRL indicator extension (RFC 5280 section 5.3.4) only
+    /// carries updates relative to the base CRL identified by the returned CRL number.
+    /// It must never be treated as a complete revocation set on its own.
+    pub fn delta_crl_indicator(&self) -> Option<&BigUint> {
+        self.extensions()
+            .iter()
+            .find(|&ext| ext.oid == OID_X509_EXT_DELTA_CRL_INDICATOR)
+            .and_then(|ext| match ext.parsed_extension {
+                ParsedExtension::DeltaCRLIndicator(ref num) => Some(num),
+                _ => None,
+            })
+    }
+
+    /// Return `true` if this CRL is a delta CRL (contains a delta CRL indicator extension)
+    #[inline]
+    pub fn is_delta_crl(&self) -> bool {
+        self.delta_crl_indicator().is_some()
+    }
+
     /// Return the raw ASN.1 DER content of the complete signed certificate revocation list that was parsed.
     ///
     /// This includes the to-be-signed (TBS) certificate list, the signature algorithm, and the signature.
@@ -445,6 +480,19 @@ impl RevokedCertificate<'_> {
         self.find_extension(&OID_X509_EXT_INVALIDITY_DATE)
             .and_then(|ext| match ext.parsed_extension {
                 ParsedExtension::InvalidityDate(date) => Some((ext.critical, date)),
+                _ => None,
+            })
+    }
+
+    /// Get the certificate issuer names (RFC 5280 section 5.3.5), if present
+    ///
+    /// This entry extension is only meaningful on indirect CRLs: it identifies the issuer of
+    /// the revoked certificate when it differs from the CRL issuer. When absent, the entry
+    /// applies to certificates issued by the CRL issuer.
+    pub fn certificate_issuer(&self) -> Option<&[GeneralName<'_>]> {
+        self.find_extension(&OID_X509_EXT_ISSUER)
+            .and_then(|ext| match ext.parsed_extension {
+                ParsedExtension::CertificateIssuer(ref names) => Some(names.as_slice()),
                 _ => None,
             })
     }
