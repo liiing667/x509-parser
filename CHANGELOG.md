@@ -5,6 +5,20 @@
 ### Added/Changed/Fixed
 
 - Add new feature `verify-aws-fips` to use the FIPS-approved crypto module of `aws-lc-rs` (#233)
+- Signature algorithms: make classification deterministic and consistent with the
+  parsed content
+  - Fix `SignatureAlgorithm` classification of RSAES-OAEP (`1.2.840.113549.1.1.7`),
+    which was previously (incorrectly) classified as plain RSA, ignoring the parameters
+  - Fix parsing of `RsaAesOaepParams` when DEFAULT fields are omitted, and fix
+    extraction of the MGF1 hash algorithm
+  - Add `AlgorithmIdentifier::der_eq` to compare algorithm identifiers (including
+    parameters) by DER content
+  - Add `check_signature_algorithm_consistency` to `X509Certificate` and
+    `CertificateRevocationList`: RFC 5280 requires the inner (TBS) and outer
+    signature algorithm identifiers to be the same; conflicts (including RSASSA-PSS
+    parameters) are now reported as `X509Error::SignatureAlgorithmMismatch`
+  - `verify_signature` now refuses inconsistent certificates/CRLs instead of
+    reporting them as verified
 
 ### Thanks
 
@@ -421,5 +435,4 @@ Public Keys:
   **Warning: this is a breaking change**
 - Add support for PEM-encoded certificates
 - Add some documentation
-
 

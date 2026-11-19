@@ -31,6 +31,17 @@ impl<'a, 'b> TryFrom<&'b AlgorithmIdentifier<'a>> for SignatureAlgorithm<'a> {
                     RsaSsaPssParams::from_der_content(&params.header, params.data.clone())
                         .map_err(|_| X509Error::InvalidSignatureValue)?;
                 Ok(SignatureAlgorithm::RSASSA_PSS(Box::new(params)))
+            } else if value.algorithm == oid! {1.2.840.113549.1.1.7} {
+                // test if RSAES-OAEP: this must be done before the generic RSA
+                // fallback, so the parameters are taken into account
+                let params = match value.parameters.as_ref() {
+                    Some(any) => any,
+                    None => return Err(X509Error::InvalidSignatureValue),
+                };
+                let (_, params) =
+                    RsaAesOaepParams::from_der_content(&params.header, params.data.clone())
+                        .map_err(|_| X509Error::InvalidSignatureValue)?;
+                Ok(SignatureAlgorithm::RSAAES_OAEP(Box::new(params)))
             } else {
                 // rfc3279#section-2.2.1: the parameters component of that type SHALL be
                 // the ASN.1 type NULL
@@ -46,20 +57,7 @@ impl<'a, 'b> TryFrom<&'b AlgorithmIdentifier<'a>> for SignatureAlgorithm<'a> {
             Ok(SignatureAlgorithm::DSA)
         } else if value.algorithm == OID_SIG_ED25519 {
             Ok(SignatureAlgorithm::ED25519)
-        } else if value.algorithm == oid! {1.2.840.113549.1.1.7} {
-            let params = match value.parameters.as_ref() {
-                Some(any) => any,
-                None => return Err(X509Error::InvalidSignatureValue),
-            };
-            let (_, params) =
-                RsaAesOaepParams::from_der_content(&params.header, params.data.clone())
-                    .map_err(|_| X509Error::InvalidSignatureValue)?;
-            Ok(SignatureAlgorithm::RSAAES_OAEP(Box::new(params)))
         } else {
-            if cfg!(debug_assertions) {
-                // TODO: remove debug
-                eprintln!("bad Signature AlgorithmIdentifier: {}", value.algorithm);
-            }
             Err(X509Error::InvalidSignatureValue)
         }
     }
@@ -195,10 +193,13 @@ impl<'a, 'b> MaskGenAlgorithm<'a, 'b> {
 #[error(X509Error)]
 pub struct RsaAesOaepParams<'a> {
     #[tag_explicit(0)]
+    #[optional]
     hash_alg: Option<AlgorithmIdentifier<'a>>,
     #[tag_explicit(1)]
+    #[optional]
     mask_gen_alg: Option<AlgorithmIdentifier<'a>>,
     #[tag_explicit(2)]
+    #[optional]
     p_source_alg: Option<AlgorithmIdentifier<'a>>,
 }
 
@@ -233,9 +234,9 @@ impl<'a> RsaAesOaepParams<'a> {
     pub fn mask_gen_algorithm(&self) -> Result<MaskGenAlgorithm<'_, '_>, X509Error> {
         match self.mask_gen_alg.as_ref() {
             Some(alg) => {
-                let hash = alg
+                let (_, hash) = alg
                     .parameters()
-                    .and_then(|any| any.as_oid().ok())
+                    .and_then(|any| Oid::from_der(any.data.as_bytes2()).ok())
                     .ok_or(X509Error::InvalidAlgorithmIdentifier)?;
                 Ok(MaskGenAlgorithm::new(alg.algorithm.clone(), hash))
             }

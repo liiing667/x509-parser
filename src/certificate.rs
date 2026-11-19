@@ -94,6 +94,32 @@ impl<'a> X509Certificate<'a> {
         self.raw.clone()
     }
 
+    /// Check the consistency of the inner (TBS) and outer signature algorithm identifiers
+    ///
+    /// RFC 5280, section 4.1.1.2 requires that the `signature` field of the TBS
+    /// certificate contains the same algorithm identifier as the outer
+    /// `signatureAlgorithm` field. This includes the parameters (for ex. RSASSA-PSS
+    /// parameters), so a certificate using different parameters in the two fields is
+    /// reported as inconsistent.
+    ///
+    /// This check is deterministic: it depends only on the DER content of the two
+    /// algorithm identifiers, so the same certificate always yields the same result.
+    ///
+    /// Note: this is a structural check, independent from parsing (which does not
+    /// reject inconsistent certificates) and from cryptographic verification (see
+    /// [`verify_signature`](Self::verify_signature), which refuses inconsistent
+    /// certificates).
+    pub fn check_signature_algorithm_consistency(&self) -> Result<(), X509Error> {
+        if self
+            .signature_algorithm
+            .der_eq(&self.tbs_certificate.signature)
+        {
+            Ok(())
+        } else {
+            Err(X509Error::SignatureAlgorithmMismatch)
+        }
+    }
+
     /// Verify the cryptographic signature of this certificate
     ///
     /// `public_key` is the public key of the **signer**. For a self-signed certificate,
@@ -121,6 +147,10 @@ impl<'a> X509Certificate<'a> {
         &self,
         public_key: Option<&SubjectPublicKeyInfo>,
     ) -> Result<(), X509Error> {
+        // RFC 5280 4.1.1.2: the inner (TBS) and outer signature algorithm identifiers
+        // must be the same. Refuse to verify if they conflict, so an inconsistent
+        // certificate cannot be reported as verified.
+        self.check_signature_algorithm_consistency()?;
         let spki = public_key.unwrap_or_else(|| self.public_key());
         verify_signature(
             spki,

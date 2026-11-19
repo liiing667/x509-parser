@@ -60,6 +60,8 @@ pub enum X509Error {
     SignatureVerificationError,
     #[error("signature unsupported algorithm")]
     SignatureUnsupportedAlgorithm,
+    #[error("signature algorithm mismatch between TBS and outer fields")]
+    SignatureAlgorithmMismatch,
 
     #[error("invalid number")]
     InvalidNumber,

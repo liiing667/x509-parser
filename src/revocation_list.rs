@@ -159,12 +159,38 @@ impl<'a> CertificateRevocationList<'a> {
         )))
     )]
     pub fn verify_signature(&self, public_key: &SubjectPublicKeyInfo) -> Result<(), X509Error> {
+        // RFC 5280 5.1.1.2: the inner (TBS) and outer signature algorithm identifiers
+        // must be the same. Refuse to verify if they conflict, so an inconsistent
+        // CRL cannot be reported as verified.
+        self.check_signature_algorithm_consistency()?;
         verify_signature(
             public_key,
             &self.signature_algorithm,
             &self.signature_value,
             self.tbs_cert_list.raw.as_bytes2(),
         )
+    }
+
+    /// Check the consistency of the inner (TBS) and outer signature algorithm identifiers
+    ///
+    /// RFC 5280, section 5.1.1.2 requires that the `signature` field of the TBS
+    /// certificate list contains the same algorithm identifier as the outer
+    /// `signatureAlgorithm` field. This includes the parameters (for ex. RSASSA-PSS
+    /// parameters), so a CRL using different parameters in the two fields is
+    /// reported as inconsistent.
+    ///
+    /// This check is deterministic: it depends only on the DER content of the two
+    /// algorithm identifiers, so the same CRL always yields the same result.
+    ///
+    /// Note: this is a structural check, independent from parsing (which does not
+    /// reject inconsistent CRLs) and from cryptographic verification (see
+    /// [`verify_signature`](Self::verify_signature), which refuses inconsistent CRLs).
+    pub fn check_signature_algorithm_consistency(&self) -> Result<(), X509Error> {
+        if self.signature_algorithm.der_eq(&self.tbs_cert_list.signature) {
+            Ok(())
+        } else {
+            Err(X509Error::SignatureAlgorithmMismatch)
+        }
     }
 }
 

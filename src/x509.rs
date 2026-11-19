@@ -323,6 +323,34 @@ impl<'a> AlgorithmIdentifier<'a> {
     pub const fn parameters(&'a self) -> Option<&'a Any<'a>> {
         self.parameters.as_ref()
     }
+
+    /// Return `true` if this algorithm identifier is strictly equal to `other`
+    ///
+    /// The comparison is done on the algorithm OID and on the DER encoding of the
+    /// parameters (if any). This means that two identifiers using different encodings
+    /// for equivalent parameters (for ex. explicit default values vs. omitted values)
+    /// are considered different.
+    ///
+    /// Note: this is different from `PartialEq`, which compares the parsed structures
+    /// and takes input positions into account for the parameters.
+    ///
+    /// This comparison is deterministic: it depends only on the DER content of the
+    /// two objects, so the same input always yields the same result.
+    pub fn der_eq(&self, other: &AlgorithmIdentifier<'_>) -> bool {
+        if self.algorithm != other.algorithm {
+            return false;
+        }
+        match (&self.parameters, &other.parameters) {
+            (None, None) => true,
+            (Some(a), Some(b)) => {
+                a.header.class() == b.header.class()
+                    && a.header.constructed() == b.header.constructed()
+                    && a.header.tag() == b.header.tag()
+                    && a.data.as_bytes2() == b.data.as_bytes2()
+            }
+            _ => false,
+        }
+    }
 }
 
 /// X.509 Name (as used in `Issuer` and `Subject` fields)

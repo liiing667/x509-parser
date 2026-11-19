@@ -54,6 +54,12 @@ impl<'a> Validator<'a> for X509StructureValidator {
     fn validate<L: Logger>(&self, item: &'a Self::Item, l: &'_ mut L) -> bool {
         let mut res = true;
         res &= TbsCertificateStructureValidator.validate(&item.tbs_certificate, l);
+        // RFC 5280 4.1.1.2: the inner (TBS) and outer signature algorithm
+        // identifiers must be the same
+        if item.check_signature_algorithm_consistency().is_err() {
+            l.err("Signature algorithm mismatch between TBS and outer algorithm identifier");
+            res = false;
+        }
         res
     }
 }
